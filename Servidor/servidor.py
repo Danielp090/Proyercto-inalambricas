@@ -4,61 +4,60 @@ import os
 from datetime import datetime
 
 app = FastAPI()
-# El archivo se guardará en la carpeta raíz del proyecto
 DB_FILE = "../bus_data.json"
-
-def actualizar_base_datos(datos):
-    """Procesa la lógica de saldo y guarda el historial."""
-    # 1. Leer la base de datos existente o crear una nueva
-    if os.path.exists(DB_FILE):
-        with open(DB_FILE, "r") as f:
-            try:
-                db = json.load(f)
-            except json.JSONDecodeError:
-                db = {}
-    else:
-        db = {}
-
-    uid = datos["uid"]
-    
-    # 2. Si el usuario es nuevo, inicializar su perfil
-    if uid not in db:
-        db[uid] = {"saldo": 0.0, "historial": []}
-
-    # 3. Actualizar saldo según la acción enviada por el ESP32-C3
-    monto = datos["monto"]
-    if datos["accion"] == "cobro":
-        db[uid]["saldo"] -= monto
-    elif datos["accion"] == "recarga":
-        db[uid]["saldo"] += monto
-
-    # 4. Registrar la transacción con fecha y hora actual
-    nueva_transaccion = {
-        "fecha": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        "tipo": datos["accion"].capitalize(),
-        "monto": f"${monto:.2f}"
-    }
-    
-    # Insertar al inicio para que la más reciente aparezca primero
-    db[uid]["historial"].insert(0, nueva_transaccion)
-    
-    # REGLA: Mantener solo las últimas 10 transacciones
-    db[uid]["historial"] = db[uid]["historial"][:10]
-
-    # 5. Guardar los cambios de forma persistente
-    with open(DB_FILE, "w") as f:
-        json.dump(db, f, indent=4)
 
 @app.post("/api/transaccion")
 async def recibir_transaccion(request: Request):
-    """Endpoint que recibe el JSON del hardware."""
     try:
         datos = await request.json()
-        actualizar_base_datos(datos)
-        print(f"✅ Transacción procesada: {datos['accion']} para UID {datos['uid']}")
-        return {"status": "success", "message": "Datos guardados correctamente"}
-    except Exception as e:
-        print(f"❌ Error en el servidor: {str(e)}")
-        return {"status": "error", "message": str(e)}
+        uid, accion, monto = datos["uid"], datos["accion"], datos["monto"]
 
-# Comando para ejecutar: uvicorn servidor:app --host 0.0.0.0 --port 8000
+        if os.path.exists(DB_FILE):
+            with open(DB_FILE, "r") as f:
+                db = json.load(f)
+        else:
+            db = {}
+
+        if uid not in db:
+            db[uid] = {"saldo": 0.0, "historial": []}
+
+        usuario = db[uid]
+        
+        # --- LÓGICA DE VALIDACIÓN ATÓMICA ---
+        tipo_final = ""
+        monto_final = ""
+
+        if accion == "cobro":
+            if (usuario["saldo"] - monto) < -0.35:
+                # RECHAZO TOTAL: No se resta dinero
+                tipo_final = " RECHAZADO"
+                monto_final = "$0.00"
+                print(f" BLOQUEO: UID {uid} intentó bajar de -0.35")
+            else:
+                # APROBADO: Aquí recién restamos
+                usuario["saldo"] -= monto
+                tipo_final = "Cobro"
+                monto_final = f"${monto:.2f}"
+        else:
+            # RECARGA: Siempre suma
+            usuario["saldo"] += monto
+            tipo_final = "Recarga"
+            monto_final = f"${monto:.2f}"
+
+        # --- REGISTRO CON COLUMNAS EN MINÚSCULAS (Para tu tabla) ---
+        nueva_trans = {
+            "fecha": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "tipo": tipo_final,
+            "monto": monto_final
+        }
+        
+        usuario["historial"].insert(0, nueva_trans)
+        usuario["historial"] = usuario["historial"][:10]
+
+        with open(DB_FILE, "w") as f:
+            json.dump(db, f, indent=4)
+
+        return {"status": "success", "resultado": tipo_final}
+
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
