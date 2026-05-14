@@ -2,107 +2,70 @@ import streamlit as st
 import json
 import os
 import pandas as pd
-from datetime import datetime
 
-# Configuración estética de la página
-st.set_page_config(
-    page_title="Sistema de Transporte Cuenca",
-    page_icon="🚌",
-    layout="wide"
-)
+# Configuración de la interfaz
+st.set_page_config(page_title="Sistema de Buses - Consulta", layout="centered")
 
-# Estilo personalizado con CSS
+# Estilo visual con CSS
 st.markdown("""
     <style>
-    .main {
-        background-color: #f5f7f9;
-    }
     .stMetric {
         background-color: #ffffff;
-        padding: 15px;
+        padding: 20px;
         border-radius: 10px;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
     }
     </style>
-    """, unsafe_allow_stdio=True)
+    """, unsafe_allow_html=True)
 
-# Título y encabezado
-st.title("🚌 Sistema Inteligente de Gestión de Transporte")
-st.subheader("Consulta de Saldo y Transacciones - Red IoT Cuenca")
+st.title("🚌 Monitor de Saldo y Transacciones")
+st.write("Ingrese su ID de tarjeta para verificar su estado actual.")
 st.markdown("---")
 
-# Función para cargar datos
-def cargar_base_datos():
-    if os.path.exists("bus_data.json"):
-        with open("bus_data.json", "r") as f:
-            return json.load(f)
-    return None
+# Ruta al archivo de datos compartido con el backend
+DB_PATH = "../bus_data.json"
 
-db = cargar_base_datos()
+if os.path.exists(DB_PATH):
+    with open(DB_PATH, "r") as f:
+        db = json.load(f)
 
-if db:
-    # --- BARRA LATERAL (Estadísticas generales) ---
-    with st.sidebar:
-        st.header("📊 Resumen del Sistema")
-        total_tarjetas = len(db)
-        st.write(f"Tarjetas registradas: **{total_tarjetas}**")
-        if st.button("🔄 Actualizar Datos"):
-            st.rerun()
+    # Buscador de tarjeta
+    uid_busqueda = st.text_input("🔍 UID de la Tarjeta (Ej: A1B2C3D4):").upper().strip()
 
-    # --- CUERPO PRINCIPAL ---
-    # Buscador con autocompletado simulado
-    search_uid = st.text_input("🔍 Ingrese el UID de su tarjeta:", help="Ejemplo: A1 B2 C3 D4").upper().strip()
-
-    if search_uid:
-        if search_uid in db:
-            usuario = db[search_uid]
+    if uid_busqueda:
+        if uid_busqueda in db:
+            usuario = db[uid_busqueda]
             
-            # Fila de métricas
-            col1, col2, col3 = st.columns(3)
-            
+            # Mostrar métricas destacadas
+            col1, col2 = st.columns(2)
             with col1:
-                # El saldo se pone rojo si es bajo
-                saldo = usuario['saldo']
-                st.metric("Saldo Disponible", f"${saldo:.2f}", delta=None, delta_color="normal")
-            
+                st.metric(label="Saldo Disponible", value=f"${usuario['saldo']:.2f}")
             with col2:
-                num_trans = len(usuario['historial'])
-                st.metric("Movimientos Registrados", num_trans)
-            
-            with col3:
-                ultima_act = usuario['historial'][0]['fecha'] if num_trans > 0 else "N/A"
-                st.write(f"**Última actividad:**  \n{ultima_act}")
+                st.info(f"ID de Usuario: {uid_busqueda}")
 
-            st.markdown("### 📋 Historial de los últimos 10 movimientos")
-            
-            if num_trans > 0:
-                # Convertir historial a DataFrame para mejor visualización
+            # Tabla de historial
+            st.subheader("📋 Últimos 10 Movimientos")
+            if usuario["historial"]:
                 df = pd.DataFrame(usuario["historial"])
+                # Renombrar para una tabla más limpia
+                df.columns = ["Fecha", "Operación", "Valor"]
+                st.table(df)
                 
-                # Renombrar columnas para la tabla
-                df.columns = ["Fecha y Hora", "Tipo de Operación", "Monto"]
-                
-                # Mostrar tabla con estilo
-                st.dataframe(df, use_container_width=True)
-
-                # Botón para descargar el reporte (Plus para la tesis)
+                # Botón de descarga para el reporte de tesis
                 csv = df.to_csv(index=False).encode('utf-8')
                 st.download_button(
-                    label="📥 Descargar Reporte de Transacciones (CSV)",
+                    label="📥 Descargar Historial (CSV)",
                     data=csv,
-                    file_name=f"reporte_{search_uid}.csv",
+                    file_name=f"historial_{uid_busqueda}.csv",
                     mime="text/csv",
                 )
             else:
-                st.info("Esta tarjeta aún no cuenta con movimientos registrados.")
+                st.write("No hay transacciones registradas para esta tarjeta.")
         else:
-            st.error(f"❌ La tarjeta con UID **{search_uid}** no existe en la base de datos.")
+            st.error("⚠️ Tarjeta no encontrada en el sistema.")
     else:
-        st.info("💡 Consejo: Acerque su tarjeta al lector en el bus para verla reflejada aquí al instante.")
-
+        st.info("Esperando ingreso de UID...")
 else:
-    st.warning("📡 No se detectan datos en el servidor. Realice una transacción con el ESP32 para inicializar el sistema.")
+    st.warning("📡 No hay datos registrados aún. Realice una operación en el bus.")
 
-# Pie de página
-st.markdown("---")
-st.caption("Proyecto de Tesis - Ingeniería en Electrónica | Cuenca, Ecuador 2026")
+# Comando para ejecutar: streamlit run pagina.py
