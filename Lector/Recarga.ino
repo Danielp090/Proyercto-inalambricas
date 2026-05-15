@@ -13,82 +13,62 @@
 
 MFRC522 rfid(SS_PIN, RST_PIN);
 
-// Credenciales Wi-Fi (Cámbialas según tu red en Cuenca)
 const char* ssid = "Red_Home";
 const char* password = "Red_5egura";
-
-// URL Pública de tu Servidor
 const char* serverUrl = "https://apibuses.fmliagarzon.duckdns.org:4443/api/transaccion";
 
 void setup() {
   Serial.begin(115200);
   delay(1000);
-  Serial.println("\n INICIANDO UNIDAD DE COBRO");
+  Serial.println("\n INICIANDO PUNTO DE RECARGA");
 
-  // Iniciar Bus SPI con tus pines específicos
   SPI.begin(SCK_PIN, MISO_PIN, MOSI_PIN, SS_PIN); 
   rfid.PCD_Init();
-  Serial.println("1. Hardware RFID");
-
+  
   WiFi.begin(ssid, password);
-  Serial.print("2. Conectando a Wi-Fi");
   while (WiFi.status() != WL_CONNECTED) {
     delay(500);
     Serial.print(".");
   }
-  Serial.println("\n Wi-Fi Conectado.");
-  Serial.println("ESPERANDO TARJETA PARA COBRO");
+  Serial.println("\n Terminal de Recarga Online");
+  Serial.println("ESPERANDO TARJETA PARA RECARGA");
 }
 
 void loop() {
-  if (WiFi.status() != WL_CONNECTED) {
-    WiFi.reconnect();
-    delay(2000);
-    return;
-  }
+  if (WiFi.status() != WL_CONNECTED) return;
 
   if (!rfid.PICC_IsNewCardPresent() || !rfid.PICC_ReadCardSerial()) return;
 
-  Serial.println("\n Tarjeta detectada...");
-  
   String uid = "";
   for (byte i = 0; i < rfid.uid.size; i++) {
     uid += String(rfid.uid.uidByte[i] < 0x10 ? "0" : "");
     uid += String(rfid.uid.uidByte[i], HEX);
   }
   uid.toUpperCase();
-  Serial.println("UID: " + uid);
 
-  enviarPeticion(uid, "cobro", 0.35);
+  Serial.println("\n Procesando Recarga para: " + uid);
+  enviarPeticion(uid, "recarga", 1.00);
 
   rfid.PICC_HaltA();
   rfid.PCD_StopCrypto1();
-  delay(2500); 
+  delay(3000); 
 }
 
 void enviarPeticion(String uid, String accion, float monto) {
   WiFiClientSecure *client = new WiFiClientSecure;
-  client->setInsecure(); 
+  client->setInsecure();
   
   HTTPClient http;
   if (http.begin(*client, serverUrl)) {
     http.addHeader("Content-Type", "application/json");
-
     String json = "{\"uid\":\"" + uid + "\", \"accion\":\"" + accion + "\", \"monto\":" + String(monto) + "}";
-    int httpResponseCode = http.POST(json);
-
-    if (httpResponseCode > 0) {
-      String response = http.getString();
-      Serial.println("Servidor: " + response);
-      
-      response.toLowerCase();
-      if (response.indexOf("rechazado") != -1) {
-        Serial.println("SALDO INSUFICIENTE");
-      } else {
-        Serial.println("Pasaje cobrado.");
-      }
+    
+    int httpCode = http.POST(json);
+    if (httpCode > 0) {
+      Serial.println(" Servidor: " + http.getString());
+      Serial.println("RECARGA EXITOSA");
     } else {
-      Serial.printf(" Error HTTPS: %s\n", http.errorToString(httpResponseCode).c_str());
+      Serial.printf(" Error: %s\n", http.errorToString(httpCode).c_str());
     }
     http.end();
   }
