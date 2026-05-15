@@ -4,7 +4,6 @@
 #include <HTTPClient.h>
 #include <WiFiClientSecure.h>
 
-// --- NUEVA CONFIGURACIÓN DE PINES ---
 #define RST_PIN   3
 #define SS_PIN    7
 #define SCK_PIN   4

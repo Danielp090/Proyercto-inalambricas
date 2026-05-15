@@ -4,7 +4,6 @@
 #include <HTTPClient.h>
 #include <WiFiClientSecure.h>
 
-// --- NUEVA CONFIGURACIÓN DE PINES ---
 #define RST_PIN   3
 #define SS_PIN    7
 #define SCK_PIN   4
@@ -13,11 +12,9 @@
 
 MFRC522 rfid(SS_PIN, RST_PIN);
 
-// Credenciales Wi-Fi (Cámbialas según tu red en Cuenca)
 const char* ssid = "Red_Home";
 const char* password = "Red_5egura";
 
-// URL Pública de tu Servidor
 const char* serverUrl = "https://apibuses.fmliagarzon.duckdns.org:4443/api/transaccion";
 
 void setup() {
@@ -25,7 +22,6 @@ void setup() {
   delay(1000);
   Serial.println("\n INICIANDO UNIDAD DE COBRO");
 
-  // Iniciar Bus SPI con tus pines específicos
   SPI.begin(SCK_PIN, MISO_PIN, MOSI_PIN, SS_PIN); 
   rfid.PCD_Init();
   Serial.println("1. Hardware RFID");
